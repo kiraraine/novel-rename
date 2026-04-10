@@ -6,7 +6,6 @@ const path = require('path');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3099;
-const ENV_FILE = path.join(__dirname, '.env');
 
 // ── 支持的模型服务商 ──────────────────────────────────────
 const PROVIDERS = {
@@ -20,34 +19,12 @@ const PROVIDERS = {
   lingyiwanwu: { hostname: 'api.lingyiwanwu.com',                 path: '/v1/chat/completions',     defaultModel: 'yi-large' },
 };
 
-// 动态配置（运行时可更新，无需重启）
-let AI_CONFIG = {
+// 从环境变量读取配置
+const AI_CONFIG = {
   provider: process.env.AI_PROVIDER || 'deepseek',
   apiKey:   process.env.AI_API_KEY   || process.env.DEEPSEEK_API_KEY || '',
   model:    process.env.AI_MODEL     || '',
 };
-
-// ── 读写 .env 文件 ─────────────────────────────────────────
-function readEnvFile() {
-  try {
-    return fs.existsSync(ENV_FILE) ? fs.readFileSync(ENV_FILE, 'utf-8') : '';
-  } catch { return ''; }
-}
-
-function setEnvVar(content, key, value) {
-  const re = new RegExp(`^${key}\\s*=.*`, 'm');
-  if (re.test(content)) return content.replace(re, `${key}=${value}`);
-  return content.trimEnd() + (content ? '\n' : '') + `${key}=${value}\n`;
-}
-
-function saveSettings({ provider, apiKey, model }) {
-  let content = readEnvFile();
-  content = setEnvVar(content, 'AI_PROVIDER', provider);
-  content = setEnvVar(content, 'AI_API_KEY',  apiKey);
-  content = setEnvVar(content, 'AI_MODEL',    model);
-  fs.writeFileSync(ENV_FILE, content, 'utf-8');
-  AI_CONFIG = { provider, apiKey, model };
-}
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -444,52 +421,12 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
-  // ── GET /api/settings：查询当前配置 ──
-  if (req.url === '/api/settings' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      hasKey: !!AI_CONFIG.apiKey,
-      provider: AI_CONFIG.provider || 'deepseek',
-      model: AI_CONFIG.model || '',
-      providers: Object.fromEntries(
-        Object.entries(PROVIDERS).map(([k, v]) => [k, v.defaultModel])
-      ),
-    }));
-    return;
-  }
-
-  // ── POST /api/settings：保存配置 ──
-  if (req.url === '/api/settings' && req.method === 'POST') {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => {
-      try {
-        const { apiKey, provider, model } = JSON.parse(body);
-        if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: '请填写有效的 API Key' }));
-          return;
-        }
-        const prov = provider && PROVIDERS[provider] ? provider : 'deepseek';
-        const mdl  = (model || '').trim();
-        saveSettings({ provider: prov, apiKey: apiKey.trim(), model: mdl });
-        console.log(`配置已更新：provider=${prov}, model=${mdl || PROVIDERS[prov].defaultModel}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: err.message }));
-      }
-    });
-    return;
-  }
-
   if (req.url === '/api/analyze' && req.method === 'POST') {
     let body = '';
     req.on('data', c => body += c);
     req.on('end', async () => {
       try {
-        if (!AI_CONFIG.apiKey) throw new Error('未配置 API Key，请先在设置中填写');
+        if (!AI_CONFIG.apiKey) throw new Error('未配置 API Key');
         const { text, gongHint, shouHint, gongNewName, shouNewName } = JSON.parse(body);
         if (!text) throw new Error('请提供文本内容');
         console.log(`开始分析，原文 ${(text.length / 10000).toFixed(1)} 万字`);
