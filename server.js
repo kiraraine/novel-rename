@@ -6,6 +6,9 @@ const path = require('path');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3099;
+const ENV_FILE = path.join(__dirname, '.env');
+// SHOW_SETTINGS=true 时在页面显示 API Key 设置入口（本地部署用）
+const SHOW_SETTINGS = process.env.SHOW_SETTINGS === 'true';
 
 // ── 支持的模型服务商 ──────────────────────────────────────
 const PROVIDERS = {
@@ -19,12 +22,31 @@ const PROVIDERS = {
   lingyiwanwu: { hostname: 'api.lingyiwanwu.com',                 path: '/v1/chat/completions',     defaultModel: 'yi-large' },
 };
 
-// 从环境变量读取配置
-const AI_CONFIG = {
+// 动态配置（SHOW_SETTINGS 模式下可运行时更新）
+let AI_CONFIG = {
   provider: process.env.AI_PROVIDER || 'deepseek',
   apiKey:   process.env.AI_API_KEY   || process.env.DEEPSEEK_API_KEY || '',
   model:    process.env.AI_MODEL     || '',
 };
+
+// ── 读写 .env 文件（仅 SHOW_SETTINGS 模式使用） ───────────
+function readEnvFile() {
+  try { return fs.existsSync(ENV_FILE) ? fs.readFileSync(ENV_FILE, 'utf-8') : ''; }
+  catch { return ''; }
+}
+function setEnvVar(content, key, value) {
+  const re = new RegExp(`^${key}\\s*=.*`, 'm');
+  if (re.test(content)) return content.replace(re, `${key}=${value}`);
+  return content.trimEnd() + (content ? '\n' : '') + `${key}=${value}\n`;
+}
+function saveSettings({ provider, apiKey, model }) {
+  let content = readEnvFile();
+  content = setEnvVar(content, 'AI_PROVIDER', provider);
+  content = setEnvVar(content, 'AI_API_KEY',  apiKey);
+  content = setEnvVar(content, 'AI_MODEL',    model);
+  fs.writeFileSync(ENV_FILE, content, 'utf-8');
+  AI_CONFIG = { provider, apiKey, model };
+}
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -420,6 +442,47 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+
+  // ── GET /api/config：前端初始化用，返回是否显示设置入口 ──
+  if (req.url === '/api/config' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      showSettings: SHOW_SETTINGS,
+      hasKey: !!AI_CONFIG.apiKey,
+      provider: AI_CONFIG.provider || 'deepseek',
+      model: AI_CONFIG.model || '',
+    }));
+    return;
+  }
+
+  // ── GET /api/settings & POST /api/settings（仅 SHOW_SETTINGS 模式） ──
+  if (req.url === '/api/settings' && req.method === 'GET') {
+    if (!SHOW_SETTINGS) { res.writeHead(403); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ hasKey: !!AI_CONFIG.apiKey, provider: AI_CONFIG.provider, model: AI_CONFIG.model }));
+    return;
+  }
+
+  if (req.url === '/api/settings' && req.method === 'POST') {
+    if (!SHOW_SETTINGS) { res.writeHead(403); res.end(); return; }
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const { apiKey, provider, model } = JSON.parse(body);
+        if (!apiKey?.trim()) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: '请填写有效的 API Key' })); return; }
+        const prov = provider && PROVIDERS[provider] ? provider : 'deepseek';
+        saveSettings({ provider: prov, apiKey: apiKey.trim(), model: (model || '').trim() });
+        console.log(`配置已更新：provider=${prov}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
 
   if (req.url === '/api/analyze' && req.method === 'POST') {
     let body = '';

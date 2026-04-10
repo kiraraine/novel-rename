@@ -56,15 +56,25 @@ node server.js
 
 ### 配置 API Key
 
-启动后点击右上角「API Key 设置」，选择服务商并填入 Key，点击保存即可。
+**方式一：页面内设置（推荐新手）**
 
-Key 会保存到项目根目录的 `.env` 文件，格式如下（也可手动编辑）：
+在 `.env` 文件中开启设置入口：
 
+```env
+SHOW_SETTINGS=true
 ```
+
+重启服务后，页面右上角会出现「API Key 设置」按钮，选择服务商、填写 Key 后保存即可。Key 会自动写入 `.env` 文件，重启后自动恢复。
+
+**方式二：直接编辑 `.env` 文件**
+
+```env
 AI_PROVIDER=deepseek
 AI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 AI_MODEL=
 ```
+
+`AI_MODEL` 留空则使用该服务商的默认模型，也可手动指定（如 `deepseek-reasoner`、`gpt-4o` 等）。
 
 ---
 
