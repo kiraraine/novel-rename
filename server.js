@@ -5,7 +5,7 @@ const path = require('path');
 
 require('dotenv').config();
 
-const PORT = 3099;
+const PORT = process.env.PORT || 3099;
 const ENV_FILE = path.join(__dirname, '.env');
 
 // ── 支持的模型服务商 ──────────────────────────────────────
