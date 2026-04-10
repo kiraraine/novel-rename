@@ -1,0 +1,13 @@
+{
+  "name": "novel-rename",
+  "version": "1.0.0",
+  "description": "耽美/BL/言情小说角色名智能替换工具",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.1"
+  }
+}
